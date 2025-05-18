@@ -1,0 +1,105 @@
+# Plantillas JSON para API de Ferretería
+
+## 1. Obtener todos los productos (GET)
+
+**URL:** `http://127.0.0.1:5000/productos`
+
+**Método:** GET
+
+No se requiere cuerpo de solicitud (body).
+
+## 2. Obtener un producto específico (GET)
+
+**URL:** `http://127.0.0.1:5000/productos/{codigo_producto}`
+
+**Método:** GET
+
+Ejemplo: `http://127.0.0.1:5000/productos/ABC123`
+
+No se requiere cuerpo de solicitud (body).
+
+## 3. Crear un producto (POST)
+
+**URL:** `http://127.0.0.1:5000/productos`
+
+**Método:** POST
+
+**Headers:**
+- Content-Type: application/json
+
+**Body:**
+```json
+{
+  "Código del producto": "ABC123",
+  "Marca": "TRUPER",
+  "Código": "TR-123",
+  "Nombre": "Martillo Profesional",
+  "Precio": [
+    {
+      "Fecha": "2025-05-10T10:00:00",
+      "Valor": 12.99
+    }
+  ]
+}
+```
+
+## 4. Actualizar un producto (PUT)
+
+**URL:** `http://127.0.0.1:5000/productos/{codigo_producto}`
+
+**Método:** PUT
+
+**Headers:**
+- Content-Type: application/json
+
+**Body:**
+```json
+{
+  "Marca": "TRUPER",
+  "Código": "TR-123",
+  "Nombre": "Martillo Profesional Premium",
+  "Precio": [
+    {
+      "Fecha": "2025-05-10T14:30:00",
+      "Valor": 14.99
+    }
+  ]
+}
+```
+
+## 5. Eliminar un producto (DELETE)
+
+**URL:** `http://127.0.0.1:5000/productos/{codigo_producto}`
+
+**Método:** DELETE
+
+Ejemplo: `http://127.0.0.1:5000/productos/ABC123`
+
+No se requiere cuerpo de solicitud (body).
+
+## 6. Crear/Actualizar stock en una sucursal (POST)
+
+**URL:** `http://127.0.0.1:5000/sucursales/{sucursal_id}/stock`
+
+**Método:** POST
+
+**Headers:**
+- Content-Type: application/json
+
+**Body:**
+```json
+[
+  {
+    "Codigo del producto": "ABC123",
+    "Cantidad": 50
+  },
+  {
+    "Codigo del producto": "XYZ789",
+    "Cantidad": 25
+  }
+]
+```
+
+## Nota sobre la creación de sucursales
+
+Tu API no incluye un endpoint para crear sucursales, pero para que funcione el manejo de stock, deberás tener sucursales creadas en la base de datos. Puedes hacerlo directamente a través de SQLite o agregando un endpoint adicional en tu API.

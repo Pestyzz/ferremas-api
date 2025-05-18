@@ -1,0 +1,180 @@
+# Implementación de SSE en Flask para stock bajo
+from flask import Flask, request, jsonify, Response
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+import json
+import queue
+import threading
+import time
+
+app = Flask(__name__)
+
+# Configuración de la base de datos
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ferreteria.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Aquí se crea la instancia de SQLAlchemy
+db = SQLAlchemy(app)
+
+# Cola para los eventos de stock bajo
+low_stock_events = queue.Queue()
+
+# Umbral para considerar stock bajo
+STOCK_BAJO_UMBRAL = 10
+
+# Modelo de Producto
+class Producto(db.Model):
+    __tablename__ = 'productos'
+    id = db.Column(db.Integer, primary_key=True)
+    codigo_producto = db.Column(db.String(50), unique=True, nullable=False)
+    marca = db.Column(db.String(100), nullable=False)
+    codigo = db.Column(db.String(50), unique=True, nullable=False)
+    nombre = db.Column(db.String(100), nullable=False)
+    precios = db.relationship('Precio', backref='producto', lazy=True)
+    stocks = db.relationship('Stock', backref='producto', lazy=True)
+
+# Modelo de Precio
+class Precio(db.Model):
+    __tablename__ = 'precios'
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.DateTime, nullable=False)
+    valor = db.Column(db.Float, nullable=False)
+    producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
+
+# Modelo de Sucursal
+class Sucursal(db.Model):
+    __tablename__ = 'sucursales'
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    direccion = db.Column(db.String(255), nullable=False)
+    stocks = db.relationship('Stock', backref='sucursal', lazy=True)
+
+# Modelo de Stock (relación entre Sucursal y Producto)
+class Stock(db.Model):
+    __tablename__ = 'stock'
+    id = db.Column(db.Integer, primary_key=True)
+    producto_id = db.Column(db.Integer, db.ForeignKey('productos.id'), nullable=False)
+    sucursal_id = db.Column(db.Integer, db.ForeignKey('sucursales.id'), nullable=False)
+    cantidad = db.Column(db.Integer, nullable=False)
+
+# Función para verificar stock bajo y enviar notificaciones
+def check_low_stock():
+    with app.app_context():
+        stocks_bajos = Stock.query.filter(Stock.cantidad < STOCK_BAJO_UMBRAL).all()
+        for stock in stocks_bajos:
+            producto = Producto.query.get(stock.producto_id)
+            sucursal = Sucursal.query.get(stock.sucursal_id)
+            evento = {
+                'tipo': 'stock_bajo',
+                'producto': {
+                    'codigo': producto.codigo_producto,
+                    'nombre': producto.nombre
+                },
+                'sucursal': {
+                    'id': sucursal.id,
+                    'nombre': sucursal.nombre
+                },
+                'cantidad': stock.cantidad,
+                'umbral': STOCK_BAJO_UMBRAL,
+                'timestamp': datetime.now().isoformat()
+            }
+            low_stock_events.put(json.dumps(evento))
+
+# Hilo para verificar periódicamente el stock bajo
+def background_check_low_stock():
+    while True:
+        check_low_stock()
+        time.sleep(300)  # Verificar cada 5 minutos
+
+# Endpoint para SSE para escuchar eventos de stock bajo
+@app.route('/sse/stock-bajo', methods=['GET'])
+def stock_bajo_eventos():
+    def event_stream():
+        # Verificar stock bajo inmediatamente al conectarse
+        check_low_stock()
+        
+        while True:
+            # Intentar obtener un evento de la cola
+            try:
+                event = low_stock_events.get(block=True, timeout=1)
+                yield f"data: {event}\n\n"
+            except queue.Empty:
+                # Si no hay eventos, enviar un ping para mantener la conexión
+                yield f"event: ping\ndata: {json.dumps({'timestamp': datetime.now().isoformat()})}\n\n"
+                time.sleep(30)  # Ping cada 30 segundos
+    
+    return Response(event_stream(), mimetype="text/event-stream", headers={
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'  # Para servidores Nginx
+    })
+
+# Ruta para actualizar stock con verificación de stock bajo
+@app.route('/sucursales/<int:sucursal_id>/stock', methods=['POST'])
+def crear_stock(sucursal_id):
+    data = request.get_json()
+    sucursal = Sucursal.query.get(sucursal_id)
+    if not sucursal:
+        return jsonify({"message": "Sucursal no encontrada"}), 404
+
+    productos_actualizar = []
+    
+    for item in data:
+        producto = Producto.query.filter_by(codigo_producto=item['Codigo del producto']).first()
+        if not producto:
+            return jsonify({"message": f"Producto {item['Codigo del producto']} no encontrado"}), 404
+
+        stock = Stock.query.filter_by(producto_id=producto.id, sucursal_id=sucursal_id).first()
+        if stock:
+            stock.cantidad += item['Cantidad']
+        else:
+            stock = Stock(producto_id=producto.id, sucursal_id=sucursal_id, cantidad=item['Cantidad'])
+            db.session.add(stock)
+            
+        productos_actualizar.append(producto.id)
+
+    db.session.commit()
+    
+    # Verificar si algún producto actualizado tiene stock bajo
+    check_low_stock()
+    
+    return jsonify({"message": "Stock actualizado correctamente"}), 200
+
+# Ruta para disminuir stock (por ejemplo, para ventas)
+@app.route('/sucursales/<int:sucursal_id>/venta', methods=['POST'])
+def registrar_venta(sucursal_id):
+    data = request.get_json()
+    sucursal = Sucursal.query.get(sucursal_id)
+    if not sucursal:
+        return jsonify({"message": "Sucursal no encontrada"}), 404
+
+    productos_vendidos = []
+    
+    for item in data:
+        producto = Producto.query.filter_by(codigo_producto=item['Codigo del producto']).first()
+        if not producto:
+            return jsonify({"message": f"Producto {item['Codigo del producto']} no encontrado"}), 404
+
+        stock = Stock.query.filter_by(producto_id=producto.id, sucursal_id=sucursal_id).first()
+        if not stock or stock.cantidad < item['Cantidad']:
+            return jsonify({"message": f"Stock insuficiente para {producto.nombre}"}), 400
+            
+        stock.cantidad -= item['Cantidad']
+        productos_vendidos.append(producto.id)
+
+    db.session.commit()
+    
+    # Verificar si algún producto vendido tiene stock bajo
+    check_low_stock()
+    
+    return jsonify({"message": "Venta registrada correctamente"}), 200
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    
+    # Iniciar hilo de verificación de stock en segundo plano
+    stock_thread = threading.Thread(target=background_check_low_stock, daemon=True)
+    stock_thread.start()
+    
+    app.run(debug=True, threaded=True)
