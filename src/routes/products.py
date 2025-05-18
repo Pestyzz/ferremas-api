@@ -85,7 +85,7 @@ def add_product():
 
 #Ruta para actualizar un producto
 @products_bp.route("/products/update/<codigo>", methods=["PUT"])
-def actualizar_producto(codigo):
+def update_product(codigo):
     try:
         data = request.get_json()
 
@@ -160,7 +160,7 @@ def actualizar_producto(codigo):
 
 #Ruta para eliminar un producto
 @products_bp.route("/products/delete/<codigo>", methods=["DELETE"])
-def eliminar_producto(codigo):
+def delete_product(codigo):
     try:
         #Buscar el producto
         producto = db.session.query(Producto).filter_by(codigo_producto=codigo).first()
@@ -189,7 +189,7 @@ def eliminar_producto(codigo):
 
 #Ruta para obtener todos los productos
 @products_bp.route("/products/all", methods=["GET"])
-def obtener_productos():
+def get_all_products():
     try:
         productos = db.session.query(Producto).all()
         result = []
@@ -211,7 +211,7 @@ def obtener_productos():
 
 #Ruta para obtener un producto por su código
 @products_bp.route("/products/product/<codigo>", methods=["GET"])
-def obtener_producto(codigo):
+def get_product(codigo):
     try:
         producto = db.session.query(Producto).filter_by(codigo_producto=codigo).first()
         if not producto:
