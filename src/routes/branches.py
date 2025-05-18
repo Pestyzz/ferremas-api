@@ -1,8 +1,6 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime
 from models import db
 from models.product import Producto
-from models.price import Precio
 from models.stock import Stock
 from models.sucursal import Sucursal
 
