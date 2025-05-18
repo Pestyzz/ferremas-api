@@ -1,10 +1,5 @@
-from flask import Flask, request, jsonify
-from datetime import datetime
+from flask import Flask
 from models import db
-from models.product import Producto
-from models.price import Precio
-from models.stock import Stock
-from models.sucursal import Sucursal
 from routes.products import products_bp
 from routes.branches import branches_bp
 
