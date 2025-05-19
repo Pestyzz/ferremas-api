@@ -2,11 +2,5 @@
 
 # API ENDPOINTS
 
-## 1. Obtener todos los productos (GET)
-
-**URL:** `http://127.0.0.1:5000/productos`
-
-**Método:** GET
-
-No se requiere cuerpo de solicitud (body).
+https://www.postman.com/payload-astronaut-2667224/public/collection/7dfdp3y/ferremas-api?action=share&creator=37754948
 
