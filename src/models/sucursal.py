@@ -1,8 +1,14 @@
-from . import db, Model, Column, String, Integer, relationship
+from . import db
 
-class Sucursal(Model):
+class Sucursal(db.Model):
     __tablename__ = 'sucursales'
-    id = Column(Integer, primary_key=True)
-    nombre = Column(String(100), nullable=False)
-    direccion = Column(String(255), nullable=False)
-    stocks = relationship('Stock', backref='sucursal', lazy=True)
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(100), nullable=False)
+    direccion = db.Column(db.String(255), nullable=False)
+    
+    # Relaciones
+    stocks = db.relationship('Stock', backref='sucursal', lazy=True, cascade='all, delete-orphan')
+    
+    def __repr__(self):
+        return f'<Sucursal {self.nombre} - {self.direccion}>'

@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package product;
+
+// Mensaje del producto
+message Product {
+  string product_code = 1;
+  string code = 2;
+  string name = 3;
+  string brand = 4;
+}
+
+// Mensaje de respuesta
+message Response {
+  string message = 1;
+  bool success = 2;
+}
+
+// Servicio que maneja productos
+service ProductService {
+  rpc AddProduct(Product) returns (Response);
+}

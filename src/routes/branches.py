@@ -1,8 +1,11 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response, stream_with_context
 from models import db
 from models.product import Producto
 from models.stock import Stock
 from models.sucursal import Sucursal
+import json
+import time
+from datetime import datetime
 
 branches_bp = Blueprint("branches", __name__)
 
@@ -166,3 +169,72 @@ def branch_get_stock(sucursal_id):
             "message": "Error interno en el servidor",
             "error": str(e)
         }), 500
+
+# Ruta para monitorear stock bajo mediante SSE
+@branches_bp.route("/branches/stock-alerts", methods=["GET"])
+def stock_alerts():
+    umbral = request.args.get('umbral', default=5, type=int)
+    
+    def generate():
+        # Mensaje inicial de conexión
+        yield f"data: {json.dumps({'message': 'Conexión de monitoreo establecida', 'umbral': umbral})}\n\n"
+        
+        # Bucle principal para verificar stock periódicamente
+        try:
+            while True:
+                # Consultar productos con stock bajo en todas las sucursales
+                stocks_bajos = db.session.query(Stock, Producto, Sucursal).join(
+                    Producto, Stock.producto_id == Producto.id
+                ).join(
+                    Sucursal, Stock.sucursal_id == Sucursal.id
+                ).filter(Stock.cantidad < umbral).all()
+                
+                # Enviar información de diagnóstico
+                yield f"data: {json.dumps({
+                    'type': 'info', 
+                    'message': f'Verificación completada', 
+                    'productos_bajo_stock': len(stocks_bajos),
+                    'timestamp': datetime.now().isoformat()
+                })}\n\n"
+                
+                # Enviar alertas para cada producto con stock bajo
+                if stocks_bajos:
+                    for stock, producto, sucursal in stocks_bajos:
+                        data = {
+                            "message": "Stock Bajo",
+                            "producto": producto.nombre,
+                            "codigo": producto.codigo_producto,
+                            "sucursal": sucursal.nombre,
+                            "cantidad": stock.cantidad,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        yield f"data: {json.dumps(data)}\n\n"
+                else:
+                    # Notificar que no hay productos con stock bajo
+                    yield f"data: {json.dumps({
+                        'type': 'info',
+                        'message': 'No hay productos con stock bajo',
+                        'timestamp': datetime.now().isoformat()
+                    })}\n\n"
+                
+                # Heartbeat para mantener la conexión viva
+                yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.now().isoformat()})}\n\n"
+                
+                # Esperar antes de la siguiente verificación (reducido para pruebas)
+                time.sleep(10)  # Verificar cada 10 segundos
+                
+        except Exception as e:
+            # Enviar error si ocurre alguna excepción
+            error_data = {
+                "message": "Error en monitoreo",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+            yield f"data: {json.dumps(error_data)}\n\n"
+    
+    # Configurar los headers para SSE
+    response = Response(stream_with_context(generate()), mimetype="text/event-stream")
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['Connection'] = 'keep-alive'
+    response.headers['X-Accel-Buffering'] = 'no'  # Para servidores Nginx
+    return response
